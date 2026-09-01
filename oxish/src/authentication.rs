@@ -21,8 +21,8 @@ use libc::{_SC_GETPW_R_SIZE_MAX, ERANGE, getpwnam_r, getpwuid_r, sysconf};
 use proto::{
     Disconnect, DisconnectReason, Encoder, IncomingPacket, MessageType, ProtoError,
     auth::{
-        AuthorizedKey, Method, ServiceAccept, ServiceRequest, SignatureData, UserAuthPkOk,
-        UserAuthRequest,
+        AuthorizedKey, AuthorizedKeyOptions, Method, ServiceAccept, ServiceRequest, SignatureData,
+        UserAuthPkOk, UserAuthRequest,
     },
     crypto::{CryptoError, CryptoProvider, Digest},
     named::{MethodName, PublicKeyAlgorithm, ServiceName},
@@ -202,6 +202,8 @@ impl AuthenticationState {
                 };
 
                 let authorized_key = user.keys.iter().find(|key| key.matches(&public_key));
+                // cache auth key options for user && auth_key ?
+
                 let (sig, authorized_key) = match (public_key.signature, authorized_key) {
                     // Signature, authorized key => verify signature
                     (Some(sig), Some(key)) if &sig.algorithm == key.algorithm() => {
@@ -342,6 +344,10 @@ impl DefaultStore {
 struct SystemStore;
 
 impl UserStore for SystemStore {
+    fn options(&self, user: &User, provider: &dyn CryptoProvider) -> Vec<AuthorizedKeyOptions> {
+        todo!();
+    }
+
     fn lookup(&self, name: Username) -> Option<User> {
         match User::lookup(UserLookup::Name(name)) {
             Ok(user) => Some(user),
@@ -372,6 +378,17 @@ impl SingleUser {
 }
 
 impl UserStore for SingleUser {
+    fn options(&self, _: &User, _: &dyn CryptoProvider) -> Vec<AuthorizedKeyOptions> {
+        let mut opts = Vec::with_capacity(self.0.keys.len());
+        for authorized_key in self.0.keys.iter() {
+            if let Some(opt) = &authorized_key.key_option {
+                opts.push(opt.clone());
+            }
+        }
+
+        opts
+    }
+
     fn lookup(&self, name: Username) -> Option<User> {
         match self.0.data.name == name {
             true => Some(self.0.data.clone()),
@@ -402,6 +419,8 @@ pub trait UserStore: Send + Sync + 'static {
 
     /// Lookup the authorized keys for a user
     fn keys(&self, user: &User, provider: &dyn CryptoProvider) -> Vec<AuthorizedKey>;
+
+    fn options(&self, user: &User, provider: &dyn CryptoProvider) -> Vec<AuthorizedKeyOptions>;
 
     /// Whether the user store should set the UID of the process to the authenticated user
     fn drop_privileges(&self) -> bool;

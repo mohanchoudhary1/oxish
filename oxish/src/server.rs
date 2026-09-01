@@ -300,6 +300,10 @@ impl Server {
             }
         }
 
+        for opt in self.store.options(&user, self.provider) {
+            let cmd = opt.command;
+            tracing::info!(command = cmd);
+        }
         let child = command.spawn()?;
 
         // The `[u8]` encoding yields the `u32` length prefix followed by the state itself.

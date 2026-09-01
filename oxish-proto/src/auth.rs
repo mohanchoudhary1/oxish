@@ -75,7 +75,7 @@ fn what_is<'a>(mut line: &'a mut &'a str, algo: &'a str) -> RetType<'a> {
 
 #[derive(Clone)]
 pub struct AuthorizedKeyOptions {
-    command: Option<String>,
+    pub command: Option<String>,
 }
 
 impl AuthorizedKeyOptions {
@@ -167,7 +167,7 @@ pub struct AuthorizedKey {
     algorithm: PublicKeyAlgorithm<'static>,
     blob: Vec<u8>,
     key: Arc<dyn VerifyingKey>,
-    key_option: Option<AuthorizedKeyOptions>,
+    pub key_option: Option<AuthorizedKeyOptions>,
 }
 
 impl AuthorizedKey {
