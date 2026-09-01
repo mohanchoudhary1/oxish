@@ -9,18 +9,171 @@ use crate::{
     named::{MethodName, Named, OutgoingNameList, PublicKeyAlgorithm, ServiceName},
 };
 
+fn advance_options<'a>(line: &'a mut &'a str) -> Option<(&'a str, &'a str)> {
+    let mut escaped = false;
+    let mut in_quotes = false;
+    let mut end = None;
+
+    for (i, c) in line.chars().enumerate() {
+        if in_quotes {
+            if !escaped {
+                match c {
+                    '\\' => escaped = true,
+                    '"' => in_quotes = !in_quotes,
+                    _ => continue,
+                }
+            } else {
+                escaped = false;
+            }
+            continue;
+        }
+
+        match c {
+            '\\' => escaped = true,
+            '"' => in_quotes = !in_quotes,
+            x if x.is_whitespace() => {
+                end = Some(i);
+                break;
+            }
+            _ => continue,
+        }
+    }
+
+    if let Some(end) = end {
+        let options = &line[0..end];
+        tracing::info!(options);
+        Some(line.split_at(end))
+    } else {
+        tracing::info!(line);
+        None
+    }
+}
+
+enum RetType<'a> {
+    Algorithm(PublicKeyAlgorithm<'a>),
+    OptAndRest((&'a str, &'a str)),
+    Invalid,
+}
+
+fn what_is<'a>(mut line: &'a mut &'a str, algo: &'a str) -> RetType<'a> {
+    let mut w = false;
+
+    let alg = PublicKeyAlgorithm::typed(algo);
+    match alg {
+        PublicKeyAlgorithm::Ed25519 | PublicKeyAlgorithm::EcdsaSha2Nistp256 => {
+            return RetType::Algorithm(alg);
+        }
+        _ => {}
+    }
+
+    if let Some(opt) = advance_options(line) {
+        RetType::OptAndRest(opt)
+    } else {
+        RetType::Invalid
+    }
+}
+
+#[derive(Clone)]
+pub struct AuthorizedKeyOptions {
+    command: Option<String>,
+}
+
+impl AuthorizedKeyOptions {
+    fn try_key(options: &mut &str, opt: &str) -> bool {
+        if let Some(rest) = options.strip_prefix(opt) {
+            if let Some(rest) = rest.strip_prefix('=') {
+                *options = rest;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn dequote(mut text: &str) -> Option<String> {
+        let mut chars = text.char_indices();
+        match chars.next() {
+            Some((_, '"')) => {}
+            _ => {
+                return None;
+            }
+        }
+
+        let mut result = String::new();
+        let mut end = None;
+        let mut escaped = false;
+
+        for (i, c) in chars {
+            if escaped {
+                if c != '"' {
+                    result.push('\\');
+                }
+                result.push(c);
+                escaped = false;
+            }
+
+            match c {
+                '\\' => escaped = true,
+                '"' => {
+                    end = Some(i + c.len_utf8());
+                    break;
+                }
+                other => result.push(c),
+            }
+        }
+
+        match end {
+            Some(end) => {
+                text = &text[end..];
+                Some(result)
+            }
+            None => None,
+        }
+    }
+
+    pub fn from_str(mut text: &mut &str) -> Option<Self> {
+        let mut auth_options = Self { command: None };
+
+        while !text.is_empty() {
+            if AuthorizedKeyOptions::try_key(text, "command") {
+                if auth_options.command.is_some() {
+                    debug!("command must be specified atmost one");
+                    return None;
+                }
+
+                let Some(command) = AuthorizedKeyOptions::dequote(text) else {
+                    return None;
+                };
+
+                auth_options.command = Some(command);
+            }
+
+            match text.chars().next() {
+                Some(_) => *text = &text[1..],
+                None => break,
+            }
+        }
+
+        if auth_options.command.is_some() {
+            Some(auth_options)
+        } else {
+            None
+        }
+    }
+}
+
 /// An authorized public key for a user
 #[derive(Clone)]
 pub struct AuthorizedKey {
     algorithm: PublicKeyAlgorithm<'static>,
     blob: Vec<u8>,
     key: Arc<dyn VerifyingKey>,
+    key_option: Option<AuthorizedKeyOptions>,
 }
 
 impl AuthorizedKey {
     /// Build an `AuthorizedKey` from a string in the format used in `authorized_keys`
     pub fn from_str(s: &str, provider: &dyn CryptoProvider) -> Option<Self> {
-        let key = match s.split_once('#') {
+        let mut key = match s.split_once('#') {
             Some((contents, _)) => contents,
             None => s,
         }
@@ -35,13 +188,33 @@ impl AuthorizedKey {
             debug!("missing algorithm");
             return None;
         };
+        tracing::info!(algorithm = alg);
 
-        // TODO: support options before key type
-        let algorithm = PublicKeyAlgorithm::typed(alg);
+        let k = what_is(&mut key, alg);
+        let (algorithm, auth_options) = match k {
+            RetType::Invalid => {
+                return None;
+            }
+            RetType::Algorithm(algorithm) => (algorithm, None),
+            RetType::OptAndRest((mut options, rest)) => {
+                parts = rest.split_whitespace();
+                let Some(alg) = parts.next() else {
+                    debug!("missing algorithm");
+                    return None;
+                };
+                tracing::info!(algorithm = alg);
+                (
+                    PublicKeyAlgorithm::typed(alg),
+                    AuthorizedKeyOptions::from_str(&mut options),
+                )
+            }
+        };
+
         let Some(key_data) = parts.next() else {
             debug!("missing key data");
             return None;
         };
+        tracing::info!(key = key_data);
 
         let Ok(blob) = data_encoding::BASE64.decode(key_data.as_bytes()) else {
             debug!("invalid base64 key data");
@@ -114,6 +287,7 @@ impl AuthorizedKey {
             algorithm: algorithm.to_owned(),
             key,
             blob,
+            key_option: auth_options,
         })
     }
 
