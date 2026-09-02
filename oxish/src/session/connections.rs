@@ -123,6 +123,13 @@ impl Channels {
                 }
                 return Ok(());
             }
+            _ => {
+                warn!(request_type = ?request.r#type, "ignoring channel request");
+                if request.want_reply {
+                    encoder.enqueue(&channel.failure())?;
+                }
+                return Ok(());
+            }
         }
 
         if request.want_reply {
@@ -429,10 +436,17 @@ impl<'a> TryFrom<IncomingPacket<'a>> for IncomingChannelMessage<'a> {
             MessageType::ChannelClose => Ok(IncomingChannelMessage::Close(ChannelClose::try_from(
                 packet,
             )?)),
-            _ => {
-                warn!(?packet.message_type, "unexpected channel message type");
-                Err(ProtoError::InvalidPacket("unexpected channel message type"))
-            }
+            _ => Err(ProtoError::UnexpectedMessage(
+                packet.message_type,
+                &[
+                    MessageType::ChannelOpen,
+                    MessageType::ChannelRequest,
+                    MessageType::ChannelData,
+                    MessageType::ChannelWindowAdjust,
+                    MessageType::ChannelEof,
+                    MessageType::ChannelClose,
+                ],
+            )),
         }
     }
 }
