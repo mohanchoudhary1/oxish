@@ -4,6 +4,7 @@ use core::{
     mem::MaybeUninit,
     str::{self, FromStr},
 };
+use std::sync::Arc;
 use std::{
     io::{self, IoSliceMut},
     os::fd::AsFd,
@@ -12,6 +13,7 @@ use std::{
 use proto::{
     Decoded, Disconnect, Encoder, GlobalRequest, MessageType, Pretty, ReadState, SessionHostKey,
     WriteState,
+    auth::AuthorizedKeyOptions,
     channels::{ChannelRequest, ChannelRequestType},
     crypto::CryptoProvider,
     key_exchange::{EcdhKeyExchangeInit, KeyExchange, Rekey},
@@ -42,6 +44,7 @@ pub struct Session<T> {
     rekey: Rekey,
     channels: Channels,
     post_quantum_kx: bool,
+    options: Arc<Option<AuthorizedKeyOptions>>,
 }
 
 impl Session<TcpStream> {
@@ -143,6 +146,7 @@ impl Session<TcpStream> {
             read,
             write,
             read_buf,
+            options,
         } = state;
 
         let opener = provider.opening_key(read.counter, &read.source)?;
@@ -172,6 +176,7 @@ impl Session<TcpStream> {
             rekey: Rekey::new(session_id, strict_kx, identities, host_key),
             channels: Channels::default(),
             post_quantum_kx,
+            options: Arc::new(options),
         })
     }
 }
@@ -193,6 +198,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
                 SessionHostKey::from_server(kx.host_key, provider)?,
             ),
             post_quantum_kx: kx.post_quantum_kx,
+            options: Arc::new(None),
         })
     }
 
@@ -248,7 +254,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
                         IncomingChannelMessage::Open(open) => self.channels.open(open, &mut encoder),
                         IncomingChannelMessage::Request(request) => {
                             let banner = banner(&request, self.rekey.client_identity(), self.post_quantum_kx);
-                            self.channels.request(request, &mut encoder, banner.as_deref())
+                            self.channels.request(request, &mut encoder, banner.as_deref(), self.options.clone())
                         }
                         IncomingChannelMessage::Data(data) => match self.channels.data(&data, &mut encoder) {
                             Ok(Some((session, data))) => match session.write(data).await {

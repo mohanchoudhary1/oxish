@@ -5,6 +5,7 @@ use core::{
     pin::Pin,
     task::{Context, Poll},
 };
+use std::sync::Arc;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, btree_map::Entry},
@@ -12,6 +13,7 @@ use std::{
 
 use proto::{
     Encode, Encoder, IncomingPacket, MAX_PACKET_LEN, MessageType, ProtoError,
+    auth::AuthorizedKeyOptions,
     channels::{
         ChannelClose, ChannelData, ChannelEof, ChannelOpen, ChannelOpenConfirmation,
         ChannelOpenFailure, ChannelRequest, ChannelRequestFailure, ChannelRequestSuccess,
@@ -70,6 +72,7 @@ impl Channels {
         request: ChannelRequest<'_>,
         encoder: &mut Encoder<'_>,
         banner: Option<&str>,
+        options: Arc<Option<AuthorizedKeyOptions>>,
     ) -> Result<(), Error> {
         let Some(channel) = self.channels.get_mut(&request.recipient_channel) else {
             return Err(ProtoError::InvalidPacket("channel request for unknown channel ID").into());
@@ -105,6 +108,7 @@ impl Channels {
                 channel.terminal = Some(TerminalState::Running(Terminal::spawn(
                     &pty_req,
                     &channel.env,
+                    options,
                 )?));
 
                 channel.receive_window = INITIAL_WINDOW_SIZE;

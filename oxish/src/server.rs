@@ -178,6 +178,7 @@ impl Server {
                 sequence_number: write.sequence_number,
             },
             read_buf: mem::take(&mut read.buf),
+            options: user.options.clone(),
         };
 
         let mut child = self
@@ -208,8 +209,6 @@ impl Server {
         mut stream: TcpStream,
         user: User,
     ) -> Result<Child, Error> {
-        let _ = stream.write_all(b"Hii");
-
         let tcp = stream.into_std()?;
 
         let (mut parent, child_sock) = UnixStream::pair()?;
@@ -220,15 +219,12 @@ impl Server {
             .env("USER", &*user.name)
             .env("LOGNAME", &*user.name)
             .env("SHELL", &user.shell)
+            .env("RUST_LOG", "trace")
+            .env("RUST_BACKTRACE", "1")
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .stdin(Stdio::from(OwnedFd::from(child_sock)))
             .stdout(Stdio::null())
             .stderr(Stdio::inherit());
-
-        #[cfg(debug_assertions)]
-        {
-            command.env("RUST_LOG", "trace");
-        }
 
         /*if let Some(AuthorizedKeyOptions {
             command: Some(ref command),

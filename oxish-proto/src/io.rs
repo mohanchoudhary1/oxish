@@ -101,6 +101,7 @@ impl ReadState {
         packet_length: PacketLength,
     ) -> Result<IncomingPacket<'a>, ProtoError> {
         let Some((_, next)) = self.buf.split_first_chunk::<4>() else {
+            tracing::error!("error");
             return Err(ProtoError::Incomplete(Some(4 - self.buf.len())));
         };
 
@@ -117,6 +118,7 @@ impl ReadState {
             ))? as usize;
 
         let Some(payload) = next.get(..payload_len) else {
+            tracing::error!("error2");
             return Err(ProtoError::Incomplete(Some(payload_len - next.len())));
         };
 
@@ -124,7 +126,10 @@ impl ReadState {
             value: message_type,
             next: payload,
         } = MessageType::decode(payload).map_err(|e| match e {
-            ProtoError::Incomplete(_) => ProtoError::InvalidPacket("packet without message type"),
+            ProtoError::Incomplete(_) => {
+                tracing::error!("error3");
+                ProtoError::InvalidPacket("packet without message type")
+            }
             _ => e,
         })?;
 
@@ -135,6 +140,7 @@ impl ReadState {
         };
 
         let Some(_) = next.get(..padding_length.0 as usize) else {
+            tracing::error!("error4");
             return Err(ProtoError::Incomplete(Some(
                 padding_length.0 as usize - next.len(),
             )));

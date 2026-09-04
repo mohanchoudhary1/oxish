@@ -226,6 +226,7 @@ struct SessionState<H> {
     write: SideState,
     /// Residual inbound bytes already drained from the socket (pipelined packets)
     read_buf: Vec<u8>,
+    options: Option<AuthorizedKeyOptions>,
 }
 
 impl Encode for SessionState<ServerHostKey<'_>> {
@@ -240,6 +241,7 @@ impl Encode for SessionState<ServerHostKey<'_>> {
             read,
             write,
             read_buf,
+            options,
         } = self;
 
         addr.to_string().as_bytes().encode(buf);
@@ -251,6 +253,7 @@ impl Encode for SessionState<ServerHostKey<'_>> {
         read.encode(buf);
         write.encode(buf);
         read_buf.encode(buf);
+        options.encode(buf);
     }
 }
 
@@ -300,6 +303,13 @@ impl SessionState<SessionHostKey> {
             next,
         } = <&[u8]>::decode(next)?;
 
+        let Decoded {
+            value: options,
+            next,
+        } = Option::<AuthorizedKeyOptions>::decode(next)?;
+
+        tracing::info!(next, "remaining bytes");
+
         Ok(Decoded {
             value: Self {
                 addr,
@@ -311,6 +321,7 @@ impl SessionState<SessionHostKey> {
                 read,
                 write,
                 read_buf: read_buf.to_vec(),
+                options,
             },
             next,
         })

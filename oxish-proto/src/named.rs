@@ -430,6 +430,7 @@ impl<'a, T: Named<'a>> Decode<'a> for IncomingNameList<T> {
         let Decoded { value: len, next } = u32::decode(bytes)?;
 
         let Some(list) = next.get(..len as usize) else {
+            tracing::error!("error8");
             return Err(ProtoError::Incomplete(Some(len as usize - next.len())));
         };
 

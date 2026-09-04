@@ -217,14 +217,41 @@ impl Decode<'_> for Option<StrictKeyExchange> {
 
 impl Encode for Option<AuthorizedKeyOptions> {
     fn encode(&self, buf: &mut Vec<u8>) {
-        self.is_some().encode(buf);
+        if let Some(AuthorizedKeyOptions {
+            command: Some(force_command),
+        }) = self
+        {
+            true.encode(buf);
+            tracing::debug!(force_command, "writing command");
+            force_command.as_bytes().encode(buf);
+        } else {
+            tracing::debug!("no command");
+            false.encode(buf);
+        }
     }
 }
 
 impl Decode<'_> for Option<AuthorizedKeyOptions> {
     fn decode(buf: &'_ [u8]) -> Result<Decoded<'_, Self>, ProtoError> {
         let Decoded { value, next } = bool::decode(buf)?;
-        Ok(Decoded { value: None, next })
+        if value {
+            let Decoded {
+                value: forced_command,
+                next,
+            } = <&[u8]>::decode(next)?;
+
+            return Ok(Decoded {
+                value: Some(AuthorizedKeyOptions {
+                    command: Some(str::from_utf8(forced_command).unwrap().to_owned()),
+                }),
+                next,
+            });
+        } else {
+            Ok(Decoded {
+                value: None,
+                next: next,
+            })
+        }
     }
 }
 

@@ -535,6 +535,8 @@ impl<'a> Decode<'a> for &'a [u8] {
     fn decode(bytes: &'a [u8]) -> Result<Decoded<'a, Self>, ProtoError> {
         let len = u32::decode(bytes)?;
         let Some(value) = len.next.get(..len.value as usize) else {
+            tracing::error!("error5");
+            panic!("stop");
             return Err(ProtoError::Incomplete(Some(
                 len.value as usize - len.next.len(),
             )));
@@ -606,7 +608,10 @@ impl<'a, const N: usize> Decode<'a> for [u8; N] {
     fn decode(bytes: &'a [u8]) -> Result<Decoded<'a, Self>, ProtoError> {
         match bytes.split_first_chunk::<N>() {
             Some((&value, next)) => Ok(Decoded { value, next }),
-            None => Err(ProtoError::Incomplete(Some(N - bytes.len()))),
+            None => {
+                tracing::error!("error6");
+                Err(ProtoError::Incomplete(Some(N - bytes.len())))
+            }
         }
     }
 }
@@ -615,7 +620,10 @@ impl<'a> Decode<'a> for u8 {
     fn decode(bytes: &'a [u8]) -> Result<Decoded<'a, Self>, ProtoError> {
         match bytes.split_first() {
             Some((&value, next)) => Ok(Decoded { value, next }),
-            None => Err(ProtoError::Incomplete(Some(1))),
+            None => {
+                tracing::error!("error7");
+                Err(ProtoError::Incomplete(Some(1)))
+            }
         }
     }
 }
