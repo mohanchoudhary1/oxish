@@ -263,9 +263,10 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
                         IncomingChannelMessage::Close(close) => self.channels.close(&close, &mut encoder),
                     }?;
 
+                    debug!("running poll");
                     future::poll_fn(|cx| send(&mut self.conn.stream, encoder.write, cx))
                         .await?;
-                }
+                },
                 result = TerminalsFuture::new(self.channels.channels_mut()) => {
                     match result {
                         Ok(Some(outgoing)) => {

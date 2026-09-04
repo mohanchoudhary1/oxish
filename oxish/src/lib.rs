@@ -15,6 +15,7 @@ use anyhow::Context as _;
 use proto::{
     Completion, Decode, Decoded, Encode, HostKeys, Identification, IdentificationError, Ignore,
     IncomingPacket, PROTOCOL, ProtoError, ReadState, ServerHostKey, SessionHostKey, WriteState,
+    auth::AuthorizedKeyOptions,
     crypto::{
         CryptoError, CryptoProvider, Digest, HandshakeBuffer, HandshakeHash, KeyLengths,
         KeySourceSide,

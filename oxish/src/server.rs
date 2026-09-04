@@ -7,7 +7,7 @@ use core::{
 use std::env;
 use std::{
     ffi::CString,
-    io::{self, IoSlice, IoSliceMut},
+    io::{self, IoSlice, IoSliceMut, Write},
     os::{
         fd::{AsFd, OwnedFd},
         unix::{ffi::OsStrExt, net::UnixStream},
@@ -18,11 +18,15 @@ use std::{
 };
 
 use anyhow::Context as _;
-use proto::{Encode, HostKeys, ReadState, ServerHostKey, WriteState, crypto::CryptoProvider};
+use proto::{
+    Encode, HostKeys, IncomingPacket, MessageType, ReadState, ServerHostKey, WriteState,
+    auth::AuthorizedKeyOptions, crypto::CryptoProvider,
+};
 use rustix::net::{
     RecvAncillaryBuffer, RecvFlags, SendAncillaryBuffer, SendAncillaryMessage, SendFlags,
 };
 use tokio::{
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
     process::{Child, Command},
     sync::{Semaphore, TryAcquireError},
@@ -201,12 +205,14 @@ impl Server {
     async fn spawn(
         &self,
         state: SessionState<ServerHostKey<'_>>,
-        stream: TcpStream,
+        mut stream: TcpStream,
         user: User,
     ) -> Result<Child, Error> {
+        let _ = stream.write_all(b"Hii");
+
         let tcp = stream.into_std()?;
 
-        let (parent, child_sock) = UnixStream::pair()?;
+        let (mut parent, child_sock) = UnixStream::pair()?;
         let mut command = Command::new(&self.session);
         command
             .env_clear()
@@ -218,6 +224,21 @@ impl Server {
             .stdin(Stdio::from(OwnedFd::from(child_sock)))
             .stdout(Stdio::null())
             .stderr(Stdio::inherit());
+
+        #[cfg(debug_assertions)]
+        {
+            command.env("RUST_LOG", "trace");
+        }
+
+        /*if let Some(AuthorizedKeyOptions {
+            command: Some(ref command),
+        }) = user.options
+        {
+            command.stdin(command);
+        } else {
+            command.stdin(Stdio::from(OwnedFd::from(child_sock)));
+        }
+        */
 
         #[cfg(coverage)]
         if let Some(file) = env::var_os("LLVM_PROFILE_FILE") {
@@ -300,10 +321,6 @@ impl Server {
             }
         }
 
-        for opt in self.store.options(&user, self.provider) {
-            let cmd = opt.command;
-            tracing::info!(command = cmd);
-        }
         let child = command.spawn()?;
 
         // The `[u8]` encoding yields the `u32` length prefix followed by the state itself.
@@ -340,12 +357,43 @@ impl Server {
         let mut control = RecvAncillaryBuffer::default();
         let received = rustix::net::recvmsg(&parent, &mut iov, &mut control, RecvFlags::empty())
             .map_err(io::Error::from)?;
-        match received.bytes {
-            0 => Err(Error::InvalidState(
-                "session process exited before acknowledging handoff",
-            )),
-            _ => Ok(child),
-        }
+        let ch = match received.bytes {
+            0 => {
+                return Err(Error::InvalidState(
+                    "session process exited before acknowledging handoff",
+                ));
+            }
+            _ => child,
+        };
+
+        /*if let Some(AuthorizedKeyOptions {
+            command: Some(ref command),
+        }) = user.options
+        {
+            tracing::info!(command, "sending");
+            let mut command = command.clone();
+            command.push('\n');
+            let mut msg = vec![0; 4];
+            let d = MessageType::Disconnect;
+            d.encode(&mut msg);
+            msg.extend_from_slice(command.as_bytes());
+            let _ = rustix::net::send(&parent, command.as_bytes(), SendFlags::empty()).unwrap();
+
+            tracing::info!(command, "sent");
+            let mut buffer = vec![0u8; 4096];
+            if let Ok((_, _)) = rustix::net::recv(&parent, &mut buffer, RecvFlags::empty()) {
+                if let Ok(content) = String::from_utf8(buffer) {
+                    tracing::info!(content);
+                } else {
+                    tracing::error!("string conv err");
+                }
+            } else {
+                tracing::error!("some error");
+            }
+        };
+        */
+
+        Ok(ch)
     }
 }
 

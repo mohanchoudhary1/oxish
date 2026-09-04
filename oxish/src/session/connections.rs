@@ -75,6 +75,7 @@ impl Channels {
             return Err(ProtoError::InvalidPacket("channel request for unknown channel ID").into());
         };
 
+        tracing::info!(?request, "channel request for");
         match request.r#type {
             ChannelRequestType::PtyReq(pty_req) => {
                 channel.terminal = Some(TerminalState::Requested(pty_req.into_owned()));

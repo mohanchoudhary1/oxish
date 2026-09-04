@@ -203,6 +203,9 @@ impl AuthenticationState {
 
                 let authorized_key = user.keys.iter().find(|key| key.matches(&public_key));
                 // cache auth key options for user && auth_key ?
+                if let Some(ref auth) = authorized_key {
+                    tracing::info!(raw_key = auth.raw_key, "authorized_key");
+                }
 
                 let (sig, authorized_key) = match (public_key.signature, authorized_key) {
                     // Signature, authorized key => verify signature
@@ -265,13 +268,22 @@ impl AuthenticationState {
                     }
                 };
 
+                let opts = authorized_key.key_option.clone();
+
                 match spawn_blocking(move || authorized_key.verify(message, signature)).await {
                     Ok(Ok(())) => {
-                        let Some(user) = cached else {
+                        let Some(mut user) = cached else {
                             return Err(ProtoError::Unreachable("must have cached user").into());
                         };
 
                         info!(user = %user.data.name, "authentication successful");
+                        if let Some(AuthorizedKeyOptions {
+                            command: Some(ref command),
+                        }) = opts
+                        {
+                            tracing::info!(command, "allowed commands");
+                            user.data.options = opts;
+                        }
                         encoder.enqueue(&MessageType::UserAuthSuccess)?;
                         Ok(Self::Complete(user.data))
                     }
@@ -445,6 +457,8 @@ pub struct User {
     pub home_dir: PathBuf,
     /// The user's shell
     pub shell: PathBuf,
+    /// options
+    pub options: Option<AuthorizedKeyOptions>,
 }
 
 impl User {
@@ -582,6 +596,7 @@ impl User {
             gid,
             home_dir,
             shell,
+            options: None,
         })
     }
 

@@ -5,6 +5,7 @@ use tracing::debug;
 
 use crate::{
     Decode, Decoded, Encode, IncomingPacket, MessageType, Pretty, ProtoError, PublicKeyAlgorithm,
+    auth::AuthorizedKeyOptions,
     crypto::{
         CryptoError, CryptoProvider, Digest, HandshakeBuffer, HandshakeHash, KeyDerivation,
         KeySourceSide, SharedSecret, SigningKey,
@@ -211,6 +212,19 @@ impl Decode<'_> for Option<StrictKeyExchange> {
             value: value.then_some(StrictKeyExchange(())),
             next,
         })
+    }
+}
+
+impl Encode for Option<AuthorizedKeyOptions> {
+    fn encode(&self, buf: &mut Vec<u8>) {
+        self.is_some().encode(buf);
+    }
+}
+
+impl Decode<'_> for Option<AuthorizedKeyOptions> {
+    fn decode(buf: &'_ [u8]) -> Result<Decoded<'_, Self>, ProtoError> {
+        let Decoded { value, next } = bool::decode(buf)?;
+        Ok(Decoded { value: None, next })
     }
 }
 
