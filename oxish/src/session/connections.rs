@@ -15,7 +15,7 @@ use std::{
 
 use proto::{
     IncomingPacket, MAX_PACKET_LEN, MessageType, ProtoError, WriteState,
-    auth::AuthorizedKeyOptions,
+    auth::KeyOptions,
     channels::{
         ChannelClose, ChannelData, ChannelEof, ChannelOpen, ChannelOpenConfirmation,
         ChannelOpenFailure, ChannelRequest, ChannelRequestFailure, ChannelRequestSuccess,
@@ -73,7 +73,7 @@ impl Channels {
         request: ChannelRequest<'_>,
         write: &mut WriteState,
         banner: Option<&str>,
-        options: Arc<Option<AuthorizedKeyOptions>>,
+        options: &Arc<KeyOptions>,
     ) -> Result<(), Error> {
         let Some(channel) = self.channels.get_mut(&request.recipient_channel) else {
             return Err(ProtoError::InvalidPacket("channel request for unknown channel ID").into());
