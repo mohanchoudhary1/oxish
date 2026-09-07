@@ -6,7 +6,6 @@ use core::{
     task::{Context, Poll},
     time::Duration,
 };
-use std::sync::Arc;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, btree_map::Entry},
@@ -73,7 +72,7 @@ impl Channels {
         request: ChannelRequest<'_>,
         write: &mut WriteState,
         banner: Option<&str>,
-        options: &Arc<KeyOptions>,
+        options: &KeyOptions,
     ) -> Result<(), Error> {
         let Some(channel) = self.channels.get_mut(&request.recipient_channel) else {
             return Err(ProtoError::InvalidPacket("channel request for unknown channel ID").into());

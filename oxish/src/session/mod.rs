@@ -2,7 +2,7 @@ use core::str::{self, FromStr};
 
 use proto::{
     Disconnect, GlobalRequest, MessageType, Pretty, SessionHostKey,
-    auth::AuthorizedKeyOptions,
+    auth::KeyOptions,
     channels::{ChannelRequest, ChannelRequestType},
     crypto::CryptoProvider,
     key_exchange::{RekeyState, Rekeyed},
@@ -25,7 +25,7 @@ pub struct Session<T> {
     pub(crate) kx: RekeyState,
     pub(crate) channels: Channels,
     pub(crate) post_quantum_kx: bool,
-    options: std::sync::Arc<Option<AuthorizedKeyOptions>>,
+    options: KeyOptions,
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
@@ -33,6 +33,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
         kx: KeyExchangeOutput<'_>,
         conn: Connection<T>,
         provider: &'static dyn CryptoProvider,
+        options: KeyOptions,
     ) -> Result<Self, Error> {
         Ok(Self {
             provider,
