@@ -25,7 +25,7 @@ pub struct Session<T> {
     pub(crate) kx: RekeyState,
     pub(crate) channels: Channels,
     pub(crate) post_quantum_kx: bool,
-    options: KeyOptions,
+    pub(crate) options: KeyOptions,
 }
 
 impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
@@ -46,7 +46,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin> Session<T> {
             ),
             post_quantum_kx: kx.post_quantum_kx,
             channels: Channels::default(),
-            options: Arc::new(KeyOptions::default()),
+            options: KeyOptions::default(),
         })
     }
 
